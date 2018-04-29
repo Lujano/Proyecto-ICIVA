@@ -122,7 +122,16 @@ def decode(packet): # Decodificador de paquetes segun su tipo
             Rmean, Gmean, Bmean = data_array[1], data_array[2], data_array[3]
             Rdev, Gdev, Bdev = data_array[4], data_array[5], data_array[6]
             return Rmean, Gmean, Bmean, Rdev, Gdev, Bdev
+def force_idle(port): # Visualizar porq no recibe el ack
+    idle = 0
+    while idle == 0 :
+        port.reset_input_buffer()
+        port.write("\r".encode("utf-8"))  # finalizar stream
+        buff = read_buffer(port)  # leer buffer serial de entrada
+        idle, packet = idle_state(buff)
 
+    print("Force idle = {}".format(idle))
+    return
 
 def main():
     port = open_port()
@@ -162,18 +171,39 @@ def main():
             elif command == "GV":
                 print("packet = "+packet2string(packet))
             elif command == "GM":
-                port.write(("\r").encode("utf-8")) # finalizar stream
+                port.write("\r".encode("utf-8")) # finalizar stream
                 print("packet = " + packet2string(packet))
                 if idle == 0:
                     Rmean, Gmean, Bmean, Rdev, Gdev, Bdev = decode(packet)
                     print("Rmean={}, Gmean={}, Bmean={}, Rdev={}, Gdev={}, Bdev={}".format(Rmean, Gmean, Bmean, Rdev, Gdev, Bdev))
+                    force_idle(port)
             elif command[:2] ==  "TC":
-                port.write(("\r").encode("utf-8"))  # finalizar stream
                 print("packet = " + packet2string(packet))
                 if idle == 0:
                     mx, my, x1, y1, x2, y2, pixels, confidence = decode(packet)
                     print("mx={}, my={}, x1={}, y1={}, x2={}, y2={}".format(mx, my, x1, y1, x2, y2))
                     print("pixels = {}, confidende = {}".format(pixels, confidence))
+                    force_idle(port)
+                    port.write(("DF" + "\r").encode("utf-8"))
+                    ack = comfirm_ACK(port)
+                    buff = read_buffer(port)  # leer buffer serial de entrada
+                    idle, packet = idle_state(buff)
+                    if idle == 1:
+                        image = decode(packet)
+                        image_raw = cv2.flip(image, -1)  # Reajuste a la imagen original vista por la camara
+                        cv2.rectangle(image_raw, (x1, y1), (x2, y2), (255, 0, 0), 1)
+                        cv2.circle ( image_raw, (mx, my), 3, (255, 0, 0), -1)
+                        plt.figure("CMUcam1")
+                        image = cv2.flip(image, 0)
+                        plt.subplot(1, 2, 1)
+                        plt.title("Imagen cruda")
+                        plt.imshow(image_raw[..., ::-1])
+                        plt.subplot(1, 2, 2)
+                        plt.title("Imagen Flip")
+                        plt.imshow(image[..., ::-1])
+                        plt.show()
+
+
             else:
                 print("packet = " + packet2string(packet))
                 print("Other command")
